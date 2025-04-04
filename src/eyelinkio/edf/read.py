@@ -42,20 +42,22 @@ from ._defines import event_constants
 _MAX_MSG_LEN = 260  # maxmimum message length we'll need to store
 
 
-def read_edf(fname):
+def read_edf(fname, encoding='ASCII'):
     """Read an EyeLink EDF file.
 
     Parameters
     ----------
     fname : path-like
         The name of the EDF file.
+    encoding : str
+        The encoding used to decode the preamble text. Default is 'ASCII'.
 
     Returns
     -------
     edf : EDF
         An instance of EDF:  The EyeLink data represented in Python.
     """
-    return EDF(fname)
+    return EDF(fname, encoding)
 
 
 class EDF(dict):
@@ -68,6 +70,8 @@ class EDF(dict):
     ----------
     fname : str
         The name of the EDF file.
+    encoding : str
+        The encoding used to decode the preamble text.
 
     Attributes
     ----------
@@ -248,10 +252,10 @@ class EDF(dict):
     >>> messages = edf['discrete']['messages']['msg'] # stimulus presentation messages
     """
 
-    def __init__(self, fname):
+    def __init__(self, fname, encoding):
         if not has_edfapi:
             raise OSError(f"Could not load EDF api: {why_not}")
-        info, discrete, times, samples = _read_raw_edf(fname)
+        info, discrete, times, samples = _read_raw_edf(fname, encoding)
         self.info = info
         self.info["filename"] = Path(fname).name
         self.discrete = discrete
@@ -317,8 +321,8 @@ class EDF(dict):
 class _edf_open:
     """Context manager for opening EDF files."""
 
-    def __init__(self, fname):
-        self.fname = op.normpath(op.abspath(fname).encode("ASCII"))
+    def __init__(self, fname, encoding):
+        self.fname = op.normpath(op.abspath(fname).encode(encoding))
         self.fid = None
 
     def __enter__(self):
@@ -350,7 +354,7 @@ _ets2pp = dict(
 )
 
 
-def _read_raw_edf(fname):
+def _read_raw_edf(fname, encoding):
     """Read data from raw EDF file into pyeparse format."""
     if not op.isfile(fname):
         raise OSError(f"File {fname} does not exist")
@@ -363,7 +367,7 @@ def _read_raw_edf(fname):
     for key in _ets2pp.values():
         n_samps[key] = 0
         offsets[key] = 0
-    with _edf_open(fname) as edf:
+    with _edf_open(fname, encoding) as edf:
         etype = None
         while etype != event_constants.get("NO_PENDING_ITEMS"):
             etype = edf_get_next_data(edf)
@@ -376,8 +380,8 @@ def _read_raw_edf(fname):
     #
     # Now let's actually read in the data
     #
-    with _edf_open(fname) as edf:
-        info = _parse_preamble(edf)
+    with _edf_open(fname, encoding) as edf:
+        info = _parse_preamble(edf, encoding)
         etype = None
         res = dict(
             info=info,
@@ -432,7 +436,7 @@ def _read_raw_edf(fname):
             if sub_key in discrete[key].dtype.names:
                 _adjust_time(discrete[key][sub_key], orig_times, times)
 
-    _extract_calibration(info, discrete["messages"])
+    _extract_calibration(info, discrete["messages"], encoding)
 
     # now we correct our time offsets
     return info, discrete, times, data
@@ -443,12 +447,12 @@ def _adjust_time(x, orig_times, times):
     x[:] = np.interp(x, orig_times, times)
 
 
-def _extract_calibration(info, messages):
+def _extract_calibration(info, messages, encoding):
     """Extract calibration from messages."""
     lines = []
     stimes = []
     for this_msg in messages:
-        msg = this_msg["msg"].decode("ASCII")
+        msg = this_msg["msg"].decode(encoing)
         if msg.startswith("!CAL") or msg.startswith("VALIDATE"):
             lines.append(msg)
             stimes.append(this_msg["stime"])
@@ -521,11 +525,11 @@ def _extract_sys_info(line):
     return line[line.find(":") :].strip(": \r\n")
 
 
-def _parse_preamble(edf):
+def _parse_preamble(edf, encoding):
     tlen = edf_get_preamble_text_length(edf)
     txt = ct.create_string_buffer(tlen)
     edf_get_preamble_text(edf, txt, tlen + 1)
-    preamble_lines = txt.value.decode("ASCII").split("\n")
+    preamble_lines = txt.value.decode(encoding).split("\n")
     info = dict()
     for line in preamble_lines:
         if "!MODE" in line:
