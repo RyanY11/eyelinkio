@@ -69,7 +69,8 @@ from eyelinkio import read_edf
 eyelinkio.utils import _get_test_fnames  # for demonstration purposes only
 
 fname = _get_test_fnames()[0]  # Replace this function with the path to your EDF file
-edf_file = read_edf(fname)
+edf_file = read_edf(fname)  # The default encoding is ASCII
+# edf_file = read_edf(fname, encoding='utf8')  # Some EDF file may need utf8 to read correctly
 print(edf_file)
 ```
 
